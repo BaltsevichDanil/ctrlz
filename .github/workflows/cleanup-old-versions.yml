@@ -1,0 +1,127 @@
+name: Cleanup Old Versions
+
+on:
+  schedule:
+    - cron: '0 2 1 * *'
+  workflow_dispatch:
+    inputs:
+      microfrontend:
+        description: 'Microfrontend to cleanup (leave empty for all)'
+        required: false
+        type: string
+      keep_versions:
+        description: 'Number of versions to keep'
+        required: false
+        type: number
+        default: 10
+      dry_run:
+        description: 'Dry run (only show what would be deleted)'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  AWS_REGION: ru-central1
+  S3_BUCKET: ctrlz-fronted
+  DEFAULT_KEEP_VERSIONS: 10
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.YANDEX_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.YANDEX_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Set cleanup parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "KEEP_VERSIONS=${{ github.event.inputs.keep_versions || env.DEFAULT_KEEP_VERSIONS }}" >> $GITHUB_OUTPUT
+            echo "DRY_RUN=${{ github.event.inputs.dry_run }}" >> $GITHUB_OUTPUT
+            echo "TARGET_MF=${{ github.event.inputs.microfrontend }}" >> $GITHUB_OUTPUT
+          else
+            echo "KEEP_VERSIONS=${{ env.DEFAULT_KEEP_VERSIONS }}" >> $GITHUB_OUTPUT
+            echo "DRY_RUN=false" >> $GITHUB_OUTPUT
+            echo "TARGET_MF=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: List microfrontends
+        id: list_mfs
+        run: |
+          # Получаем список микрофронтов
+          if [ -n "${{ steps.params.outputs.TARGET_MF }}" ]; then
+            MFS="${{ steps.params.outputs.TARGET_MF }}"
+          else
+            MFS=$(aws s3 ls s3://${{ env.S3_BUCKET }}/ \
+              --endpoint-url=https://storage.yandexcloud.net \
+              | grep "PRE " | awk '{print $2}' | sed 's/\///g' | grep -v "staging")
+          fi
+          
+          echo "Microfrontends to process: $MFS"
+          echo "MFS<<EOF" >> $GITHUB_OUTPUT
+          echo "$MFS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Cleanup old versions
+        run: |
+          DRY_RUN_FLAG=""
+          if [ "${{ steps.params.outputs.DRY_RUN }}" == "true" ]; then
+            DRY_RUN_FLAG="--dryrun"
+            echo "🔍 DRY RUN MODE - No files will be deleted"
+          fi
+          
+          for MF in ${{ steps.list_mfs.outputs.MFS }}; do
+            echo "🔍 Processing microfrontend: $MF"
+            
+            # Получаем список версий (исключая latest)
+            VERSIONS=$(aws s3 ls s3://${{ env.S3_BUCKET }}/$MF/ \
+              --endpoint-url=https://storage.yandexcloud.net \
+              | grep "PRE " | awk '{print $2}' | sed 's/\///g' | grep -v "latest" | sort -r)
+            
+            if [ -z "$VERSIONS" ]; then
+              echo "  ℹ️  No versions found for $MF"
+              continue
+            fi
+            
+            VERSION_COUNT=$(echo "$VERSIONS" | wc -l)
+            echo "  📊 Found $VERSION_COUNT versions"
+            
+            if [ $VERSION_COUNT -le ${{ steps.params.outputs.KEEP_VERSIONS }} ]; then
+              echo "  ✅ Keeping all versions (less than or equal to ${{ steps.params.outputs.KEEP_VERSIONS }})"
+              continue
+            fi
+            
+            # Получаем версии для удаления (пропускаем первые N)
+            VERSIONS_TO_DELETE=$(echo "$VERSIONS" | tail -n +$((${{ steps.params.outputs.KEEP_VERSIONS }} + 1)))
+            DELETE_COUNT=$(echo "$VERSIONS_TO_DELETE" | wc -l)
+            
+            echo "  🗑️  Will delete $DELETE_COUNT old versions:"
+            
+            for VERSION in $VERSIONS_TO_DELETE; do
+              echo "    - $VERSION"
+              
+              if [ "${{ steps.params.outputs.DRY_RUN }}" != "true" ]; then
+                aws s3 rm s3://${{ env.S3_BUCKET }}/$MF/$VERSION/ \
+                  --endpoint-url=https://storage.yandexcloud.net \
+                  --recursive
+                echo "    ✅ Deleted $VERSION"
+              fi
+            done
+            
+            echo "  ✅ Completed cleanup for $MF"
+          done
+
+      - name: Summary
+        run: |
+          echo "## 🧹 Cleanup Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mode**: ${{ steps.params.outputs.DRY_RUN == 'true' && 'Dry Run' || 'Live' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Versions to keep**: ${{ steps.params.outputs.KEEP_VERSIONS }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Target microfrontend**: ${{ steps.params.outputs.TARGET_MF || 'All' }}" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ steps.params.outputs.DRY_RUN }}" == "true" ]; then
+            echo "- **Note**: This was a dry run. No files were actually deleted." >> $GITHUB_STEP_SUMMARY
+          fi 

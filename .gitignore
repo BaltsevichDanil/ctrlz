@@ -1,0 +1,60 @@
+# Terraform state files
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+
+# Terraform variable files containing secrets
+terraform/secret.backend.tfvars
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
+
+# Crash log
+terraform/crash.log
+
+# .terraform directory
+terraform/.terraform/
+
+# Local .tfplan files
+*.tfplan
+
+# Ignore any .tfvars files (often contain secrets)
+*.tfvars
+
+# Ignore provider override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore .DS_Store (macOS)
+.DS_Store
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+.env
+.env.*
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
+
+# Golang
+bin/
+*.exe
+*.test
+*.out
+*.log
+coverage.out
+vendor/
+# Go workspace file
+go.work
+go.work.sum
+

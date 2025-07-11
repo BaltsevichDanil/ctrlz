@@ -1,0 +1,177 @@
+name: Deploy Microfrontends to S3
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'frontends/**'
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'frontends/**'
+
+env:
+  AWS_REGION: ru-central1
+  S3_BUCKET: ctrlz-fronted
+  NODE_VERSION: '24.2.0'
+  PNPM_VERSION: '10.9.0'
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.changes.outputs.matrix }}
+      has-changes: ${{ steps.changes.outputs.has-changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed microfrontends
+        id: changes
+        run: |
+          # Получаем список измененных файлов
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
+          else
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
+          fi
+          
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+          
+          # Находим уникальные микрофронты, которые изменились
+          CHANGED_MFS=$(echo "$CHANGED_FILES" | grep "^frontends/" | cut -d'/' -f2 | sort -u)
+          
+          if [ -z "$CHANGED_MFS" ]; then
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "No microfrontends changed"
+            exit 0
+          fi
+          
+          echo "Changed microfrontends:"
+          echo "$CHANGED_MFS"
+          
+          # Создаем matrix для GitHub Actions
+          MATRIX_INCLUDE=""
+          for MF in $CHANGED_MFS; do
+            if [ -d "frontends/$MF" ]; then
+              VERSION=$(cat frontends/$MF/package.json | grep '"version"' | sed 's/.*"version": "\([^"]*\)".*/\1/')
+              if [ -z "$MATRIX_INCLUDE" ]; then
+                MATRIX_INCLUDE="{\"name\":\"$MF\",\"version\":\"$VERSION\"}"
+              else
+                MATRIX_INCLUDE="$MATRIX_INCLUDE,{\"name\":\"$MF\",\"version\":\"$VERSION\"}"
+              fi
+            fi
+          done
+          
+          if [ -n "$MATRIX_INCLUDE" ]; then
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[$MATRIX_INCLUDE]}" >> $GITHUB_OUTPUT
+          else
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+          fi
+
+  build-and-deploy:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: |
+          cd frontends/${{ matrix.name }}
+          pnpm install --frozen-lockfile
+
+      - name: Build microfrontend
+        run: |
+          cd frontends/${{ matrix.name }}
+          pnpm run build
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.YANDEX_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.YANDEX_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy to S3
+        run: |
+          cd frontends/${{ matrix.name }}
+          
+          # Создаем директорию для деплоя с версией
+          S3_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
+          
+          # Загружаем файлы в S3
+          aws s3 sync dist/ $S3_PATH \
+            --endpoint-url=https://storage.yandexcloud.net \
+            --delete \
+            --cache-control "public, max-age=31536000" \
+            --exclude "*.html" \
+            --exclude "*.json"
+          
+          # Загружаем HTML и JSON файлы с другими заголовками кэширования
+          aws s3 sync dist/ $S3_PATH \
+            --endpoint-url=https://storage.yandexcloud.net \
+            --delete \
+            --cache-control "public, max-age=0, must-revalidate" \
+            --include "*.html" \
+            --include "*.json"
+          
+          # Создаем symlink на latest версию (копируем в папку latest)
+          LATEST_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
+          aws s3 sync dist/ $LATEST_PATH \
+            --endpoint-url=https://storage.yandexcloud.net \
+            --delete \
+            --cache-control "public, max-age=300"
+
+      - name: Update deployment info
+        run: |
+          echo "✅ Deployed ${{ matrix.name }} version ${{ matrix.version }}"
+          echo "📁 S3 Path: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
+          echo "🔗 Latest: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
+
+  notify-completion:
+    needs: [detect-changes, build-and-deploy]
+    if: always() && needs.detect-changes.outputs.has-changes == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify completion
+        run: |
+          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
+            echo "🎉 All microfrontends deployed successfully!"
+          else
+            echo "❌ Some deployments failed"
+            exit 1
+          fi 

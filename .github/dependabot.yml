@@ -1,0 +1,71 @@
+version: 2
+updates:
+  # Auth frontend dependencies (pnpm)
+  - package-ecosystem: "npm"
+    directory: "/frontends/auth"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "baltsevich"
+    assignees:
+      - "baltsevich"
+    commit-message:
+      prefix: "deps(auth)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "auth-frontend"
+      - "pnpm"
+    ignore:
+      # Ignore major version updates for React to avoid breaking changes
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # Host frontend dependencies
+  - package-ecosystem: "npm"
+    directory: "/frontends/host"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "baltsevich"
+    assignees:
+      - "baltsevich"
+    commit-message:
+      prefix: "deps(host)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "host-frontend"
+    ignore:
+      # Ignore major version updates for React to avoid breaking changes
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "baltsevich"
+    assignees:
+      - "baltsevich"
+    commit-message:
+      prefix: "deps(actions)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions" 
