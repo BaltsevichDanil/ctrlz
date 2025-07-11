@@ -120,12 +120,19 @@ jobs:
           cd frontends/${{ matrix.name }}
           pnpm run build
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.YANDEX_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.YANDEX_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+      - name: Configure Yandex Cloud credentials
+        run: |
+          mkdir -p ~/.aws
+          cat > ~/.aws/credentials << EOF
+          [default]
+          aws_access_key_id = ${{ secrets.YANDEX_ACCESS_KEY_ID }}
+          aws_secret_access_key = ${{ secrets.YANDEX_SECRET_ACCESS_KEY }}
+          EOF
+          
+          cat > ~/.aws/config << EOF
+          [default]
+          region = ${{ env.AWS_REGION }}
+          EOF
 
       - name: Deploy to S3
         run: |
