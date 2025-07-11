@@ -17,7 +17,7 @@ resource "yandex_api_gateway" "ctrlz_gateway" {
     }
     
     paths = {
-      # Host microfrontend (main application)
+      # Root path - main entry point
       "/" = {
         get = {
           summary = "Host microfrontend"
@@ -28,21 +28,18 @@ resource "yandex_api_gateway" "ctrlz_gateway" {
             object = "host/latest/index.html"
             presigned_redirect = false
             service_account_id = yandex_iam_service_account.ctrlz_fronted_s3_account.id
-            response_headers = {
-              "Content-Type" = "text/html; charset=utf-8"
-            }
           }
         }
       }
       
-      # Host microfrontend static assets
-      "/host/{proxy+}" = {
+      # Assets directory - for CSS, JS files
+      "/assets/{file+}" = {
         get = {
-          summary = "Host microfrontend assets"
-          operationId = "hostAssets"
+          summary = "Static assets"
+          operationId = "assets"
           parameters = [
             {
-              name = "proxy"
+              name = "file"
               in = "path"
               required = true
               schema = {
@@ -53,42 +50,51 @@ resource "yandex_api_gateway" "ctrlz_gateway" {
           x-yc-apigateway-integration = {
             type = "object_storage"
             bucket = yandex_storage_bucket.ctrlz_fronted_s3_bucket.bucket
-            object = "host/latest/{proxy}"
+            object = "host/latest/assets/{file}"
             presigned_redirect = false
             service_account_id = yandex_iam_service_account.ctrlz_fronted_s3_account.id
-            response_headers = {
-              "Content-Type" = "{%- if proxy | regex_match('\\.css$') -%}text/css{%- elif proxy | regex_match('\\.js$') -%}application/javascript{%- elif proxy | regex_match('\\.json$') -%}application/json{%- elif proxy | regex_match('\\.svg$') -%}image/svg+xml{%- elif proxy | regex_match('\\.png$') -%}image/png{%- elif proxy | regex_match('\\.jpg$') or proxy | regex_match('\\.jpeg$') -%}image/jpeg{%- elif proxy | regex_match('\\.gif$') -%}image/gif{%- elif proxy | regex_match('\\.ico$') -%}image/x-icon{%- elif proxy | regex_match('\\.woff$') -%}font/woff{%- elif proxy | regex_match('\\.woff2$') -%}font/woff2{%- elif proxy | regex_match('\\.ttf$') -%}font/ttf{%- elif proxy | regex_match('\\.eot$') -%}application/vnd.ms-fontobject{%- elif proxy | regex_match('\\.html$') -%}text/html; charset=utf-8{%- else -%}application/octet-stream{%- endif -%}"
-            }
           }
         }
       }
       
-      # Auth microfrontend root
-      "/auth" = {
+      # Favicon
+      "/favicon.ico" = {
         get = {
-          summary = "Auth microfrontend root"
-          operationId = "authRoot"
+          summary = "Favicon"
+          operationId = "favicon"
           x-yc-apigateway-integration = {
             type = "object_storage"
             bucket = yandex_storage_bucket.ctrlz_fronted_s3_bucket.bucket
-            object = "auth/latest/index.html"
+            object = "host/latest/favicon.ico"
             presigned_redirect = false
             service_account_id = yandex_iam_service_account.ctrlz_fronted_s3_account.id
-            response_headers = {
-              "Content-Type" = "text/html; charset=utf-8"
-            }
           }
         }
       }
       
-      # Auth microfrontend assets
-      "/auth/{proxy+}" = {
+      # Vite SVG
+      "/vite.svg" = {
         get = {
-          summary = "Auth microfrontend assets"
-          operationId = "authMicrofrontend"
+          summary = "Vite SVG"
+          operationId = "viteSvg"
+          x-yc-apigateway-integration = {
+            type = "object_storage"
+            bucket = yandex_storage_bucket.ctrlz_fronted_s3_bucket.bucket
+            object = "host/latest/vite.svg"
+            presigned_redirect = false
+            service_account_id = yandex_iam_service_account.ctrlz_fronted_s3_account.id
+          }
+        }
+      }
+      
+      # Catch-all for SPA routing - return index.html for all other paths
+      "/{path+}" = {
+        get = {
+          summary = "SPA routing fallback"
+          operationId = "spaFallback"
           parameters = [
             {
-              name = "proxy"
+              name = "path"
               in = "path"
               required = true
               schema = {
@@ -99,12 +105,9 @@ resource "yandex_api_gateway" "ctrlz_gateway" {
           x-yc-apigateway-integration = {
             type = "object_storage"
             bucket = yandex_storage_bucket.ctrlz_fronted_s3_bucket.bucket
-            object = "auth/latest/{proxy}"
+            object = "host/latest/index.html"
             presigned_redirect = false
             service_account_id = yandex_iam_service_account.ctrlz_fronted_s3_account.id
-            response_headers = {
-              "Content-Type" = "{%- if proxy | regex_match('\\.css$') -%}text/css{%- elif proxy | regex_match('\\.js$') -%}application/javascript{%- elif proxy | regex_match('\\.json$') -%}application/json{%- elif proxy | regex_match('\\.svg$') -%}image/svg+xml{%- elif proxy | regex_match('\\.png$') -%}image/png{%- elif proxy | regex_match('\\.jpg$') or proxy | regex_match('\\.jpeg$') -%}image/jpeg{%- elif proxy | regex_match('\\.gif$') -%}image/gif{%- elif proxy | regex_match('\\.ico$') -%}image/x-icon{%- elif proxy | regex_match('\\.woff$') -%}font/woff{%- elif proxy | regex_match('\\.woff2$') -%}font/woff2{%- elif proxy | regex_match('\\.ttf$') -%}font/ttf{%- elif proxy | regex_match('\\.eot$') -%}application/vnd.ms-fontobject{%- elif proxy | regex_match('\\.html$') -%}text/html; charset=utf-8{%- else -%}application/octet-stream{%- endif -%}"
-            }
           }
         }
       }

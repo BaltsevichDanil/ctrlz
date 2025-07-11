@@ -141,19 +141,19 @@ jobs:
           S3_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
           LATEST_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
           
-          # Upload CSS files
-          aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.css" --content-type "text/css" --cache-control "public, max-age=31536000"
-          aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.css" --content-type "text/css" --cache-control "public, max-age=300"
-          
-          # Upload JS files
-          aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.js" --content-type "application/javascript" --cache-control "public, max-age=31536000"
-          aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.js" --content-type "application/javascript" --cache-control "public, max-age=300"
-          
-          # Upload HTML files
+          # Upload HTML files FIRST (most important)
           aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.html" --content-type "text/html" --cache-control "public, max-age=0, must-revalidate"
           aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.html" --content-type "text/html" --cache-control "public, max-age=300"
           
-          # Upload other files
+          # Upload CSS files
+          aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.css" --exclude "*.html" --content-type "text/css" --cache-control "public, max-age=31536000"
+          aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.css" --exclude "*.html" --content-type "text/css" --cache-control "public, max-age=300"
+          
+          # Upload JS files
+          aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.js" --exclude "*.html" --content-type "application/javascript" --cache-control "public, max-age=31536000"
+          aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --include "*.js" --exclude "*.html" --content-type "application/javascript" --cache-control "public, max-age=300"
+          
+          # Upload other files (excluding HTML, CSS, JS)
           aws s3 sync dist/ $S3_PATH --endpoint-url=https://storage.yandexcloud.net --exclude "*.css" --exclude "*.js" --exclude "*.html" --cache-control "public, max-age=31536000"
           aws s3 sync dist/ $LATEST_PATH --endpoint-url=https://storage.yandexcloud.net --exclude "*.css" --exclude "*.js" --exclude "*.html" --cache-control "public, max-age=300"
 
