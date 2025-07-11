@@ -4,6 +4,15 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import federation from '@originjs/vite-plugin-federation'
 
+const getRemoteUrl = (microfrontend: string) => {
+  const ports: Record<string, number> = {
+    auth: 5174,
+    host: 5173
+  }
+  
+  return `http://localhost:${ports[microfrontend]}/assets/remoteEntry.js`
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -12,7 +21,7 @@ export default defineConfig({
     federation({
       name: 'host',
       remotes: {
-        auth: 'http://localhost:5174/assets/remoteEntry.js',
+        auth: getRemoteUrl('auth'),
       },
     }),
   ],
