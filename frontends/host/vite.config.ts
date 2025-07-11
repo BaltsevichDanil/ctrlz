@@ -10,11 +10,17 @@ const getRemoteUrl = (microfrontend: string) => {
     host: 5173
   }
   
+  // В production используем относительные пути через API Gateway
+  if (process.env.NODE_ENV === 'production') {
+    return `/${microfrontend}/assets/remoteEntry.js`
+  }
+  
   return `http://localhost:${ports[microfrontend]}/assets/remoteEntry.js`
 }
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/',
   plugins: [
     react(), 
     tailwindcss(),
@@ -23,6 +29,7 @@ export default defineConfig({
       remotes: {
         auth: getRemoteUrl('auth'),
       },
+      shared: ['react', 'react-dom'],
     }),
   ],
   resolve: {

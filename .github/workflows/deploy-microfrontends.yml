@@ -162,17 +162,3 @@ jobs:
           echo "✅ Deployed ${{ matrix.name }} version ${{ matrix.version }}"
           echo "📁 S3 Path: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
           echo "🔗 Latest: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
-
-  notify-completion:
-    needs: [detect-changes, build-and-deploy]
-    if: always() && needs.detect-changes.outputs.has-changes == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify completion
-        run: |
-          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
-            echo "🎉 All microfrontends deployed successfully!"
-          else
-            echo "❌ Some deployments failed"
-            exit 1
-          fi 

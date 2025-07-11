@@ -6,11 +6,14 @@ import federation from '@originjs/vite-plugin-federation'
 
 // https://vite.dev/config/
 export default defineConfig({
+  base: '/auth/',
   plugins: [react(), tailwindcss(), federation({
     name: 'auth',
+    filename: 'remoteEntry.js',
     exposes: {
       './Signin': './src/features/Signin/Signin.tsx',
     },
+    shared: ['react', 'react-dom'],
   })],
   resolve: {
     alias: {
