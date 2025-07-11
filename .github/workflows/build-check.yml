@@ -1,18 +1,12 @@
-name: Deploy Microfrontends to S3
+name: Build Check
 
 on:
-  push:
-    branches: [ main, master ]
-    paths:
-      - 'frontends/**'
   pull_request:
-    branches: [ main, master ]
+    types: [opened, synchronize, reopened]
     paths:
       - 'frontends/**'
 
 env:
-  AWS_REGION: ru-central1
-  S3_BUCKET: ctrlz-fronted
   NODE_VERSION: '24.2.0'
   PNPM_VERSION: '10.9.0'
 
@@ -31,19 +25,7 @@ jobs:
       - name: Detect changed microfrontends
         id: changes
         run: |
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
-          else
-            if [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ] && [ -n "${{ github.event.before }}" ]; then
-              CHANGED_FILES=$(git diff --name-only ${{ github.event.before }} ${{ github.sha }})
-            else
-              if git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-                CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD)
-              else
-                CHANGED_FILES=$(git ls-files)
-              fi
-            fi
-          fi
+          CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }})
           
           echo "Changed files:"
           echo "$CHANGED_FILES"
@@ -80,7 +62,7 @@ jobs:
             echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
           fi
 
-  build-and-deploy:
+  build-check:
     needs: detect-changes
     if: needs.detect-changes.outputs.has-changes == 'true'
     runs-on: ubuntu-latest
@@ -124,55 +106,6 @@ jobs:
           cd frontends/${{ matrix.name }}
           pnpm run build
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.YANDEX_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.YANDEX_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Deploy to S3
+      - name: Build summary
         run: |
-          cd frontends/${{ matrix.name }}
-          
-          S3_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
-          
-          aws s3 sync dist/ $S3_PATH \
-            --endpoint-url=https://storage.yandexcloud.net \
-            --delete \
-            --cache-control "public, max-age=31536000" \
-            --exclude "*.html" \
-            --exclude "*.json"
-          
-          aws s3 sync dist/ $S3_PATH \
-            --endpoint-url=https://storage.yandexcloud.net \
-            --delete \
-            --cache-control "public, max-age=0, must-revalidate" \
-            --include "*.html" \
-            --include "*.json"
-          
-          LATEST_PATH="s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
-          aws s3 sync dist/ $LATEST_PATH \
-            --endpoint-url=https://storage.yandexcloud.net \
-            --delete \
-            --cache-control "public, max-age=300"
-
-      - name: Update deployment info
-        run: |
-          echo "✅ Deployed ${{ matrix.name }} version ${{ matrix.version }}"
-          echo "📁 S3 Path: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/${{ matrix.version }}"
-          echo "🔗 Latest: s3://${{ env.S3_BUCKET }}/${{ matrix.name }}/latest"
-
-  notify-completion:
-    needs: [detect-changes, build-and-deploy]
-    if: always() && needs.detect-changes.outputs.has-changes == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notify completion
-        run: |
-          if [ "${{ needs.build-and-deploy.result }}" == "success" ]; then
-            echo "🎉 All microfrontends deployed successfully!"
-          else
-            echo "❌ Some deployments failed"
-            exit 1
-          fi 
+          echo "✅ Built ${{ matrix.name }} version ${{ matrix.version }}" 
